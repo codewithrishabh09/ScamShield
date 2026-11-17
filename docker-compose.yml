@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: scamshield
       POSTGRES_DB: scamshield
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -17,7 +17,7 @@ services:
     container_name: scamshield-redis
     restart: unless-stopped
     ports:
-      - "6380:6379"
+      - "6381:6379"
     volumes:
       - redis_data:/data
 
