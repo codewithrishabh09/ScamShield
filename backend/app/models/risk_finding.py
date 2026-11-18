@@ -5,13 +5,12 @@ from decimal import Decimal
 from sqlalchemy import (
     DateTime,
     ForeignKey,
-    JSON,
     Numeric,
     String,
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -64,8 +63,9 @@ class RiskFinding(Base):
         default=0,
     )
 
-    metadata: Mapped[dict | None] = mapped_column(
-        JSON,
+    extra_metadata: Mapped[dict | None] = mapped_column(
+        "metadata",
+        JSONB,
         nullable=True,
     )
 
