@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from sqlalchemy import text
 
+from app.api.v1.router import api_router
 from app.db.session import AsyncSessionLocal
 
 
@@ -9,6 +10,9 @@ app = FastAPI(
     description="AI-powered digital scam detection and risk analysis platform.",
     version="0.1.0",
 )
+
+
+app.include_router(api_router)
 
 
 @app.get("/health")
