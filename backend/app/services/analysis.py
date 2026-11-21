@@ -98,9 +98,13 @@ async def analyze_scan(
     db: AsyncSession,
     scan: Scan,
 ) -> AnalysisResult:
+    # commit ke baad scan expire ho jata hai, isliye values pehle nikal lo
+    scan_id = scan.id
+    scan_content = scan.content
+
     matches = await detect_rules(
         db,
-        scan.content,
+        scan_content,
     )
 
     score_contributions = [
@@ -129,7 +133,7 @@ async def analyze_scan(
     )
 
     analysis_result = AnalysisResult(
-        scan_id=scan.id,
+        scan_id=scan_id,
         risk_score=risk_score,
         risk_level=risk_level,
         category=category,
@@ -139,19 +143,20 @@ async def analyze_scan(
     )
 
     db.add(analysis_result)
+    await db.flush()  # analysis_result.id generate ho jayegi
 
     for match in matches:
-        finding = RiskFinding(
-            analysis_result=analysis_result,
-            finding_type=match.pattern_name,
-            severity=match.severity,
-            title=match.title,
-            description=match.description,
-            evidence=match.evidence,
-            score_contribution=match.score_contribution,
+        db.add(
+            RiskFinding(
+                analysis_id=analysis_result.id,
+                finding_type=match.pattern_name,
+                severity=match.severity,
+                title=match.title,
+                description=match.description,
+                evidence=match.evidence,
+                score_contribution=match.score_contribution,
+            )
         )
-
-        db.add(finding)
 
     scan.status = "completed"
     scan.completed_at = datetime.now(timezone.utc)

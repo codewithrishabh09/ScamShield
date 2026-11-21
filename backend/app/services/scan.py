@@ -2,6 +2,7 @@ import uuid
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.analysis_result import AnalysisResult
 from app.models.scan import Scan
@@ -35,10 +36,13 @@ async def get_user_scan(
     user_id: uuid.UUID,
 ) -> Scan | None:
     result = await db.execute(
-        select(Scan).where(
+        select(Scan)
+        .where(
             Scan.id == scan_id,
             Scan.user_id == user_id,
         )
+        .options(selectinload(Scan.analysis_result))
+        .execution_options(populate_existing=True)
     )
 
     return result.scalar_one_or_none()

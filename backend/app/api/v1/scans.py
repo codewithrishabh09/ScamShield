@@ -10,8 +10,8 @@ from app.schemas.scan import (
     ScanCreate,
     ScanDetailResponse,
     ScanListResponse,
-    ScanResponse,
 )
+from app.services.analysis import analyze_scan
 from app.services.scan import (
     create_scan,
     get_user_scan,
@@ -25,16 +25,38 @@ router = APIRouter(
 )
 
 
+def build_scan_detail(scan) -> ScanDetailResponse:
+    analysis = None
+
+    if scan.analysis_result:
+        analysis = {
+            "risk_score": scan.analysis_result.risk_score,
+            "risk_level": scan.analysis_result.risk_level,
+            "category": scan.analysis_result.category,
+            "verdict": scan.analysis_result.verdict,
+        }
+
+    return ScanDetailResponse(
+        id=scan.id,
+        input_type=scan.input_type,
+        content=scan.content,
+        status=scan.status,
+        created_at=scan.created_at,
+        completed_at=scan.completed_at,
+        analysis=analysis,
+    )
+
+
 @router.post(
     "",
-    response_model=ScanResponse,
+    response_model=ScanDetailResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_new_scan(
     payload: ScanCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> ScanResponse:
+) -> ScanDetailResponse:
     input_type = payload.input_type.lower().strip()
 
     if input_type not in ALLOWED_INPUT_TYPES:
@@ -54,14 +76,34 @@ async def create_new_scan(
             detail="Scan content cannot be empty.",
         )
 
+    # commit ke baad ORM objects expire ho jate hain,
+    # isliye ids pehle hi variables me rakh lo
+    user_id = current_user.id
+
     scan = await create_scan(
         db,
-        user_id=current_user.id,
+        user_id=user_id,
         input_type=input_type,
         content=content,
     )
 
-    return scan
+    scan_id = scan.id
+
+    await analyze_scan(db, scan)
+
+    scan = await get_user_scan(
+        db,
+        scan_id=scan_id,
+        user_id=user_id,
+    )
+
+    if scan is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Scan could not be loaded after analysis.",
+        )
+
+    return build_scan_detail(scan)
 
 
 @router.get(
@@ -125,22 +167,4 @@ async def get_scan(
             detail="Scan not found.",
         )
 
-    analysis = None
-
-    if scan.analysis_result:
-        analysis = {
-            "risk_score": scan.analysis_result.risk_score,
-            "risk_level": scan.analysis_result.risk_level,
-            "category": scan.analysis_result.category,
-            "verdict": scan.analysis_result.verdict,
-        }
-
-    return ScanDetailResponse(
-        id=scan.id,
-        input_type=scan.input_type,
-        content=scan.content,
-        status=scan.status,
-        created_at=scan.created_at,
-        completed_at=scan.completed_at,
-        analysis=analysis,
-    )
+    return build_scan_detail(scan)
