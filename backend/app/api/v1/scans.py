@@ -76,8 +76,6 @@ async def create_new_scan(
             detail="Scan content cannot be empty.",
         )
 
-    # commit ke baad ORM objects expire ho jate hain,
-    # isliye ids pehle hi variables me rakh lo
     user_id = current_user.id
 
     scan = await create_scan(

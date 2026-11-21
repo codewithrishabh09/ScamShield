@@ -98,7 +98,7 @@ async def analyze_scan(
     db: AsyncSession,
     scan: Scan,
 ) -> AnalysisResult:
-    # commit ke baad scan expire ho jata hai, isliye values pehle nikal lo
+
     scan_id = scan.id
     scan_content = scan.content
 
@@ -143,7 +143,7 @@ async def analyze_scan(
     )
 
     db.add(analysis_result)
-    await db.flush()  # analysis_result.id generate ho jayegi
+    await db.flush()  
 
     for match in matches:
         db.add(
