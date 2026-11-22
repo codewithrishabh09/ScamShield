@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func, Index
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -65,7 +65,7 @@ class Scan(Base):
         cascade="all, delete-orphan",
     )
 
-    url_analysis = relationship(
+    url_analyses = relationship(
         "URLAnalysis",
         back_populates="scan",
         cascade="all, delete-orphan",

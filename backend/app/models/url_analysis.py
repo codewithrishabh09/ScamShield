@@ -6,13 +6,12 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
-    JSON,
     Numeric,
     String,
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -48,11 +47,13 @@ class URLAnalysis(Base):
     is_https: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
+        default=False,
     )
 
     is_suspicious: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
+        default=False,
     )
 
     risk_score: Mapped[Decimal] = mapped_column(
@@ -61,7 +62,7 @@ class URLAnalysis(Base):
     )
 
     signals: Mapped[dict | None] = mapped_column(
-        JSON,
+        JSONB,
         nullable=True,
     )
 
@@ -73,5 +74,5 @@ class URLAnalysis(Base):
 
     scan = relationship(
         "Scan",
-        back_populates="url_analysis",
+        back_populates="url_analyses",
     )
