@@ -12,22 +12,56 @@ class Explanation:
     score_contribution: Decimal
 
 
+def _first_attr(obj, names: list[str], default=None):
+    for name in names:
+        value = getattr(obj, name, None)
+        if value is not None:
+            return value
+    return default
+
+
 def build_explanations(
     findings,
 ) -> list[Explanation]:
     explanations: list[Explanation] = []
 
     for finding in findings:
+        finding_type = _first_attr(
+            finding,
+            ["finding_type", "pattern_name", "signal_type"],
+            default="unknown",
+        )
+
+        score = _first_attr(
+            finding,
+            ["score_contribution", "risk_score", "score", "weight"],
+            default=Decimal("0"),
+        )
+
         explanations.append(
             Explanation(
-                finding_type=finding.finding_type,
-                title=finding.title,
-                description=finding.description,
-                evidence=finding.evidence,
-                severity=finding.severity,
-                score_contribution=(
-                    finding.score_contribution
+                finding_type=finding_type,
+                title=_first_attr(
+                    finding,
+                    ["title"],
+                    default=finding_type.replace("_", " ").title(),
                 ),
+                description=_first_attr(
+                    finding,
+                    ["description"],
+                    default="",
+                ),
+                evidence=_first_attr(
+                    finding,
+                    ["evidence"],
+                    default=None,
+                ),
+                severity=_first_attr(
+                    finding,
+                    ["severity"],
+                    default="medium",
+                ),
+                score_contribution=Decimal(str(score)),
             )
         )
 

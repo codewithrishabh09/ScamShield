@@ -17,19 +17,20 @@ from app.risk.risk_engine import (
     determine_verdict,
 )
 from app.services.explanation import (
+    Explanation,
     build_explanations,
     build_risk_summary,
 )
-from app.services.recommendation import (
-    build_recommendation,
-)
+from app.services.recommendation import build_recommendation
 from app.services.url_analyzer import analyze_content_urls
 
 
 @dataclass
 class ScanAnalysisOutput:
     analysis_result: AnalysisResult
-    risk_summary: Any
+    risk_summary: str
+    recommendation: Any
+    explanations: list[Explanation]
 
 
 def serialize_signals(signals) -> list[dict]:
@@ -59,14 +60,9 @@ async def analyze_scan(
     scan_id = scan.id
     scan_content = scan.content
 
-    rule_matches = await detect_rules(
-        db,
-        scan_content,
-    )
+    rule_matches = await detect_rules(db, scan_content)
 
-    url_results = analyze_content_urls(
-        scan_content,
-    )
+    url_results = analyze_content_urls(scan_content)
 
     rule_score = calculate_risk_score(
         [match.score_contribution for match in rule_matches]
@@ -102,13 +98,13 @@ async def analyze_scan(
     for result in url_results:
         all_findings.extend(result.signals)
 
-    explanation_objects = build_explanations(all_findings)
+    explanations = build_explanations(all_findings)
 
     risk_summary = build_risk_summary(
         combined_score,
         risk_level,
         category,
-        explanation_objects,
+        explanations,
     )
 
     analysis_result = AnalysisResult(
@@ -117,7 +113,7 @@ async def analyze_scan(
         risk_level=risk_level,
         category=category,
         verdict=verdict,
-        recommendation=recommendation,
+        recommendation=recommendation.action,  
         model_version="rules-url-v1",
     )
 
@@ -159,4 +155,6 @@ async def analyze_scan(
     return ScanAnalysisOutput(
         analysis_result=analysis_result,
         risk_summary=risk_summary,
+        recommendation=recommendation,
+        explanations=explanations,
     )

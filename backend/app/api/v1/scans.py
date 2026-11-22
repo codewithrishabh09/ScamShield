@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +12,7 @@ from app.schemas.scan import (
     ScanDetailResponse,
     ScanListResponse,
 )
-from app.services.analysis import analyze_scan
+from app.services.analysis import ScanAnalysisOutput, analyze_scan
 from app.services.scan import (
     create_scan,
     get_user_scan,
@@ -27,7 +28,7 @@ router = APIRouter(
 
 def build_scan_detail(
     scan,
-    risk_summary=None,
+    output: ScanAnalysisOutput | None = None,
 ) -> ScanDetailResponse:
     analysis = None
 
@@ -38,7 +39,15 @@ def build_scan_detail(
             "category": scan.analysis_result.category,
             "verdict": scan.analysis_result.verdict,
             "recommendation": scan.analysis_result.recommendation,
-            "summary": risk_summary,
+            "priority": (
+                output.recommendation.priority if output else None
+            ),
+            "summary": output.risk_summary if output else None,
+            "why": (
+                [asdict(item) for item in output.explanations]
+                if output
+                else []
+            ),
         }
 
     return ScanDetailResponse(
@@ -106,10 +115,7 @@ async def create_new_scan(
             detail="Scan could not be loaded after analysis.",
         )
 
-    return build_scan_detail(
-        scan,
-        risk_summary=output.risk_summary,
-    )
+    return build_scan_detail(scan, output)
 
 
 @router.get(
