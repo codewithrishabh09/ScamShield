@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -8,6 +7,8 @@ from app.detectors.rule_detector import detect_rules
 from app.models.analysis_result import AnalysisResult
 from app.models.risk_finding import RiskFinding
 from app.models.scan import Scan
+from app.models.url_analysis import URLAnalysis
+from app.services.url_analyzer import analyze_content_urls
 
 
 def calculate_risk_score(
@@ -98,54 +99,59 @@ async def analyze_scan(
     db: AsyncSession,
     scan: Scan,
 ) -> AnalysisResult:
-
+    
     scan_id = scan.id
     scan_content = scan.content
 
-    matches = await detect_rules(
+    rule_matches = await detect_rules(
         db,
         scan_content,
     )
 
-    score_contributions = [
-        match.score_contribution
-        for match in matches
-    ]
-
-    risk_score = calculate_risk_score(
-        score_contributions
+    url_results = analyze_content_urls(
+        scan_content,
     )
 
-    risk_level = determine_risk_level(
-        risk_score
+    rule_score = calculate_risk_score(
+        [match.score_contribution for match in rule_matches]
     )
 
-    category = determine_category(
-        [match.category for match in matches]
+    url_score = calculate_risk_score(
+        [result.risk_score for result in url_results]
     )
 
-    verdict = determine_verdict(
-        risk_score
+    combined_score = min(
+        rule_score + url_score,
+        Decimal("100"),
     )
 
-    recommendation = build_recommendation(
-        risk_score
-    )
+    risk_level = determine_risk_level(combined_score)
+
+    categories = [match.category for match in rule_matches]
+
+    if any(result.is_suspicious for result in url_results):
+        categories.append("phishing")
+
+    category = determine_category(categories)
+
+    verdict = determine_verdict(combined_score)
+
+    recommendation = build_recommendation(combined_score)
 
     analysis_result = AnalysisResult(
         scan_id=scan_id,
-        risk_score=risk_score,
+        risk_score=combined_score,
         risk_level=risk_level,
         category=category,
         verdict=verdict,
         recommendation=recommendation,
-        model_version="rules-v1",
+        model_version="rules-url-v1",
     )
 
     db.add(analysis_result)
     await db.flush()  
 
-    for match in matches:
+    for match in rule_matches:
         db.add(
             RiskFinding(
                 analysis_id=analysis_result.id,
@@ -155,6 +161,19 @@ async def analyze_scan(
                 description=match.description,
                 evidence=match.evidence,
                 score_contribution=match.score_contribution,
+            )
+        )
+
+    for result in url_results:
+        db.add(
+            URLAnalysis(
+                scan_id=scan_id,
+                url=result.url,
+                domain=result.domain,
+                is_https=result.is_https,
+                is_suspicious=result.is_suspicious,
+                risk_score=result.risk_score,
+                signals=result.signals,
             )
         )
 
