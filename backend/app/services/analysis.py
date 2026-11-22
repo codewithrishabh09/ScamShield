@@ -1,6 +1,7 @@
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +24,12 @@ from app.services.recommendation import (
     build_recommendation,
 )
 from app.services.url_analyzer import analyze_content_urls
+
+
+@dataclass
+class ScanAnalysisOutput:
+    analysis_result: AnalysisResult
+    risk_summary: Any
 
 
 def serialize_signals(signals) -> list[dict]:
@@ -48,7 +55,7 @@ def serialize_signals(signals) -> list[dict]:
 async def analyze_scan(
     db: AsyncSession,
     scan: Scan,
-) -> AnalysisResult:
+) -> ScanAnalysisOutput:
     scan_id = scan.id
     scan_content = scan.content
 
@@ -149,4 +156,7 @@ async def analyze_scan(
     await db.commit()
     await db.refresh(analysis_result)
 
-    return analysis_result
+    return ScanAnalysisOutput(
+        analysis_result=analysis_result,
+        risk_summary=risk_summary,
+    )

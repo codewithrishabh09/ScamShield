@@ -25,7 +25,10 @@ router = APIRouter(
 )
 
 
-def build_scan_detail(scan) -> ScanDetailResponse:
+def build_scan_detail(
+    scan,
+    risk_summary=None,
+) -> ScanDetailResponse:
     analysis = None
 
     if scan.analysis_result:
@@ -34,6 +37,8 @@ def build_scan_detail(scan) -> ScanDetailResponse:
             "risk_level": scan.analysis_result.risk_level,
             "category": scan.analysis_result.category,
             "verdict": scan.analysis_result.verdict,
+            "recommendation": scan.analysis_result.recommendation,
+            "summary": risk_summary,
         }
 
     return ScanDetailResponse(
@@ -87,7 +92,7 @@ async def create_new_scan(
 
     scan_id = scan.id
 
-    await analyze_scan(db, scan)
+    output = await analyze_scan(db, scan)
 
     scan = await get_user_scan(
         db,
@@ -101,7 +106,10 @@ async def create_new_scan(
             detail="Scan could not be loaded after analysis.",
         )
 
-    return build_scan_detail(scan)
+    return build_scan_detail(
+        scan,
+        risk_summary=output.risk_summary,
+    )
 
 
 @router.get(
@@ -109,21 +117,10 @@ async def create_new_scan(
     response_model=ScanListResponse,
 )
 async def list_scans(
-    page: int = Query(
-        default=1,
-        ge=1,
-    ),
-    page_size: int = Query(
-        default=20,
-        ge=1,
-        le=100,
-    ),
-    risk_level: str | None = Query(
-        default=None,
-    ),
-    category: str | None = Query(
-        default=None,
-    ),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    risk_level: str | None = Query(default=None),
+    category: str | None = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ScanListResponse:

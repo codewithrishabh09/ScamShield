@@ -48,6 +48,8 @@ class ScanAnalysisSummary(BaseModel):
     risk_level: str
     category: str
     verdict: str
+    recommendation: str
+    summary: str
 
 
 class ScanDetailResponse(BaseModel):
