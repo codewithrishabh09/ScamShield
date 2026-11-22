@@ -9,91 +9,20 @@ from app.models.analysis_result import AnalysisResult
 from app.models.risk_finding import RiskFinding
 from app.models.scan import Scan
 from app.models.url_analysis import URLAnalysis
+from app.risk.risk_engine import (
+    calculate_risk_score,
+    determine_category,
+    determine_risk_level,
+    determine_verdict,
+)
+from app.services.explanation import (
+    build_explanations,
+    build_risk_summary,
+)
+from app.services.recommendation import (
+    build_recommendation,
+)
 from app.services.url_analyzer import analyze_content_urls
-
-
-def calculate_risk_score(
-    score_contributions: list[Decimal],
-) -> Decimal:
-    total = sum(
-        score_contributions,
-        Decimal("0"),
-    )
-
-    return min(
-        total,
-        Decimal("100"),
-    )
-
-
-def determine_risk_level(
-    risk_score: Decimal,
-) -> str:
-    if risk_score < 30:
-        return "low"
-
-    if risk_score < 60:
-        return "medium"
-
-    if risk_score < 80:
-        return "high"
-
-    return "critical"
-
-
-def determine_category(
-    categories: list[str],
-) -> str:
-    if not categories:
-        return "unknown"
-
-    counts: dict[str, int] = {}
-
-    for category in categories:
-        counts[category] = counts.get(category, 0) + 1
-
-    return max(
-        counts,
-        key=counts.get,
-    )
-
-
-def determine_verdict(
-    risk_score: Decimal,
-) -> str:
-    if risk_score >= 60:
-        return "suspicious"
-
-    return "likely_safe"
-
-
-def build_recommendation(
-    risk_score: Decimal,
-) -> str:
-    if risk_score >= 80:
-        return (
-            "Do not click links, share OTPs or passwords, "
-            "or transfer money. Verify the request through "
-            "an official channel."
-        )
-
-    if risk_score >= 60:
-        return (
-            "Proceed with caution. Do not share sensitive "
-            "information or make payments until the sender "
-            "has been independently verified."
-        )
-
-    if risk_score >= 30:
-        return (
-            "Be cautious and verify the message before "
-            "taking any action."
-        )
-
-    return (
-        "No major scam indicators were detected. "
-        "Continue to use normal security precautions."
-    )
 
 
 def serialize_signals(signals) -> list[dict]:
@@ -102,7 +31,7 @@ def serialize_signals(signals) -> list[dict]:
     for signal in signals:
         if is_dataclass(signal):
             data = asdict(signal)
-        elif hasattr(signal, "model_dump"):  
+        elif hasattr(signal, "model_dump"):
             data = signal.model_dump()
         else:
             data = dict(vars(signal))
@@ -120,7 +49,6 @@ async def analyze_scan(
     db: AsyncSession,
     scan: Scan,
 ) -> AnalysisResult:
-
     scan_id = scan.id
     scan_content = scan.content
 
@@ -157,7 +85,24 @@ async def analyze_scan(
 
     verdict = determine_verdict(combined_score)
 
-    recommendation = build_recommendation(combined_score)
+    recommendation = build_recommendation(
+        combined_score,
+        category,
+    )
+
+    all_findings = list(rule_matches)
+
+    for result in url_results:
+        all_findings.extend(result.signals)
+
+    explanation_objects = build_explanations(all_findings)
+
+    risk_summary = build_risk_summary(
+        combined_score,
+        risk_level,
+        category,
+        explanation_objects,
+    )
 
     analysis_result = AnalysisResult(
         scan_id=scan_id,
@@ -170,7 +115,7 @@ async def analyze_scan(
     )
 
     db.add(analysis_result)
-    await db.flush()  
+    await db.flush()
 
     for match in rule_matches:
         db.add(
