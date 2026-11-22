@@ -1,3 +1,4 @@
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -95,11 +96,31 @@ def build_recommendation(
     )
 
 
+def serialize_signals(signals) -> list[dict]:
+    serialized = []
+
+    for signal in signals:
+        if is_dataclass(signal):
+            data = asdict(signal)
+        elif hasattr(signal, "model_dump"):  
+            data = signal.model_dump()
+        else:
+            data = dict(vars(signal))
+
+        for key, value in data.items():
+            if isinstance(value, Decimal):
+                data[key] = float(value)
+
+        serialized.append(data)
+
+    return serialized
+
+
 async def analyze_scan(
     db: AsyncSession,
     scan: Scan,
 ) -> AnalysisResult:
-    
+
     scan_id = scan.id
     scan_content = scan.content
 
@@ -173,7 +194,7 @@ async def analyze_scan(
                 is_https=result.is_https,
                 is_suspicious=result.is_suspicious,
                 risk_score=result.risk_score,
-                signals=result.signals,
+                signals=serialize_signals(result.signals),
             )
         )
 
