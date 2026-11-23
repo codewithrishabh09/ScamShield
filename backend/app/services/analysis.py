@@ -1,3 +1,4 @@
+import logging
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -21,8 +22,17 @@ from app.services.explanation import (
     build_explanations,
     build_risk_summary,
 )
+from app.services.ml_classifier import (
+    MLClassification,
+    classify_text,
+)
 from app.services.recommendation import build_recommendation
 from app.services.url_analyzer import analyze_content_urls
+
+
+logger = logging.getLogger(__name__)
+
+ML_CONFIDENCE_THRESHOLD = 0.70
 
 
 @dataclass
@@ -34,6 +44,7 @@ class ScanAnalysisOutput:
 
 
 def serialize_signals(signals) -> list[dict]:
+    """Convert signal objects into JSON-serializable dicts for the JSONB column."""
     serialized = []
 
     for signal in signals:
@@ -53,6 +64,22 @@ def serialize_signals(signals) -> list[dict]:
     return serialized
 
 
+def safe_classify(text: str) -> MLClassification | None:
+    """Run the ML classifier as an optional signal.
+
+    Returns None if the model file is missing or classification fails,
+    so rule-based and URL analysis keep working.
+    """
+    try:
+        return classify_text(text)
+    except FileNotFoundError:
+        logger.warning("ML model not found, skipping ML signal.")
+    except Exception:
+        logger.exception("ML classification failed, skipping ML signal.")
+
+    return None
+
+
 async def analyze_scan(
     db: AsyncSession,
     scan: Scan,
@@ -63,6 +90,8 @@ async def analyze_scan(
     rule_matches = await detect_rules(db, scan_content)
 
     url_results = analyze_content_urls(scan_content)
+
+    ml_result = safe_classify(scan_content)
 
     rule_score = calculate_risk_score(
         [match.score_contribution for match in rule_matches]
@@ -83,6 +112,12 @@ async def analyze_scan(
 
     if any(result.is_suspicious for result in url_results):
         categories.append("phishing")
+
+    if (
+        ml_result is not None
+        and ml_result.confidence >= ML_CONFIDENCE_THRESHOLD
+    ):
+        categories.append(ml_result.category)
 
     category = determine_category(categories)
 
@@ -113,8 +148,10 @@ async def analyze_scan(
         risk_level=risk_level,
         category=category,
         verdict=verdict,
-        recommendation=recommendation.action,  
-        model_version="rules-url-v1",
+        recommendation=recommendation.action,
+        model_version=(
+            "rules-url-ml-v1" if ml_result is not None else "rules-url-v1"
+        ),
     )
 
     db.add(analysis_result)
