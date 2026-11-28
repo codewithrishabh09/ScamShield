@@ -1,28 +1,17 @@
 import re
-from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.detectors.base import DetectionFinding
 from app.models.threat_pattern import ThreatPattern
-
-
-@dataclass
-class RuleMatch:
-    pattern_name: str
-    category: str
-    severity: str
-    title: str
-    description: str
-    evidence: str
-    score_contribution: Decimal
 
 
 async def detect_rules(
     db: AsyncSession,
     content: str,
-) -> list[RuleMatch]:
+) -> list[DetectionFinding]:
     result = await db.execute(
         select(ThreatPattern).where(
             ThreatPattern.is_active.is_(True)
@@ -31,28 +20,34 @@ async def detect_rules(
 
     patterns = result.scalars().all()
 
-    matches: list[RuleMatch] = []
+    findings: list[DetectionFinding] = []
 
     for pattern in patterns:
-        match = re.search(
-            pattern.pattern,
-            content,
-            flags=re.IGNORECASE,
-        )
+        try:
+            match = re.search(
+                pattern.pattern,
+                content,
+                flags=re.IGNORECASE,
+            )
+        except re.error:
+            continue
 
         if not match:
             continue
 
         evidence = match.group(0).strip()
 
-        matches.append(
-            RuleMatch(
+        findings.append(
+            DetectionFinding(
                 pattern_name=pattern.name,
+                finding_type=pattern.name,
                 category=pattern.category,
                 severity=pattern.severity,
                 title=_build_title(pattern.name),
-                description=pattern.description
-                or "Suspicious pattern detected.",
+                description=(
+                    pattern.description
+                    or "Suspicious pattern detected."
+                ),
                 evidence=evidence,
                 score_contribution=Decimal(
                     str(pattern.score_weight)
@@ -60,7 +55,7 @@ async def detect_rules(
             )
         )
 
-    return matches
+    return findings
 
 
 def _build_title(pattern_name: str) -> str:
